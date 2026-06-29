@@ -309,8 +309,17 @@ select:focus { border-color: var(--accent); }
   padding: 14px;
 }
 .demo-title { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 0.05em; }
-.cred-grid { display: flex; flex-direction: column; gap: 7px; }
-.cred-row { display: flex; align-items: center; gap: 7px; font-size: 0.8rem; color: var(--text-muted); }
+.quick-login-grid { display: flex; flex-direction: column; gap: 6px; }
+.quick-login-btn {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--bg-hover); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 8px 12px;
+  cursor: pointer; color: var(--text-muted);
+  transition: border-color 0.1s, color 0.1s, background 0.1s;
+  text-align: left; width: 100%;
+}
+.quick-login-btn:hover { border-color: var(--accent); color: var(--text); background: rgba(79,126,247,0.08); }
+.quick-login-name { font-size: 0.85rem; }
 
 /* ---- Modals ---- */
 .modal-overlay {

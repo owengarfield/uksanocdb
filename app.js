@@ -221,11 +221,28 @@ function renderLogin(error = '') {
           <button type="submit" class="btn btn-primary btn-full">Sign In</button>
         </form>
         <div class="demo-creds">
-          <p class="demo-title">Demo credentials</p>
-          <div class="cred-grid">
-            <div class="cred-row"><span class="role-badge role-admin">admin</span><code>SafetyAdmin</code> / <code>admin123</code></div>
-            <div class="cred-row"><span class="role-badge role-mod">mod</span><code>ModeratorJane</code> / <code>mod123</code></div>
-            <div class="cred-row"><span class="role-badge role-user">user</span><code>MemberAlex</code> / <code>user123</code></div>
+          <p class="demo-title">Quick login</p>
+          <div class="quick-login-grid">
+            <button class="quick-login-btn" data-user="SafetyAdmin" data-pass="admin123">
+              <span class="role-badge role-admin">admin</span>
+              <span class="quick-login-name">SafetyAdmin</span>
+            </button>
+            <button class="quick-login-btn" data-user="ModeratorJane" data-pass="mod123">
+              <span class="role-badge role-mod">mod</span>
+              <span class="quick-login-name">ModeratorJane</span>
+            </button>
+            <button class="quick-login-btn" data-user="ModeratorTom" data-pass="mod456">
+              <span class="role-badge role-mod">mod</span>
+              <span class="quick-login-name">ModeratorTom</span>
+            </button>
+            <button class="quick-login-btn" data-user="MemberAlex" data-pass="user123">
+              <span class="role-badge role-user">user</span>
+              <span class="quick-login-name">MemberAlex</span>
+            </button>
+            <button class="quick-login-btn" data-user="MemberSarah" data-pass="user456">
+              <span class="role-badge role-user">user</span>
+              <span class="quick-login-name">MemberSarah</span>
+            </button>
           </div>
         </div>
       </div>
@@ -240,6 +257,12 @@ function renderLogin(error = '') {
     } else {
       renderApp();
     }
+  });
+
+  document.querySelectorAll('.quick-login-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (login(btn.dataset.user, btn.dataset.pass)) renderApp();
+    });
   });
 }
 
