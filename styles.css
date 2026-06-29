@@ -573,6 +573,9 @@ select:focus { border-color: var(--accent); }
 .role-item { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-muted); }
 .demo-note { color: var(--text-dim); font-size: 0.8rem; margin-top: 16px; padding: 12px 16px; background: var(--amber-dim); border: 1px solid rgba(224,160,80,0.2); border-radius: var(--radius-sm); }
 
+/* ---- Full-page form (mobile entry/profile) ---- */
+.page-form-wrap { max-width: 600px; padding-bottom: 40px; }
+
 /* ---- Detail Page ---- */
 .detail-page { display: flex; flex-direction: column; height: 100%; }
 .detail-page-topbar {

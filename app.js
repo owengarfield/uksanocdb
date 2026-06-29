@@ -1,3 +1,5 @@
+function isMobile() { return window.innerWidth <= 768; }
+
 // ---- Multiselect dropdown component ----
 function createMultiselect(options, selected = [], placeholder = 'Select…') {
   let current = [...selected];
@@ -419,10 +421,12 @@ function renderEntryRow(e) {
         ${lister ? `<button class="btn-link lister-link" data-uid="${lister.id}">${escHtml(lister.displayName || lister.username)}</button>` : '—'}
       </td>
       <td class="date-cell">${formatDate(e.dateAdded)}</td>
-      <td class="actions-cell">
-        <button class="btn btn-ghost btn-xs view-btn" data-id="${e.id}">View</button>
-        ${can.edit() ? `<button class="btn btn-ghost btn-xs edit-btn hide-mobile" data-id="${e.id}">Edit</button>` : ''}
-        ${can.delete() ? `<button class="btn btn-danger btn-xs delete-btn hide-mobile" data-id="${e.id}">Del</button>` : ''}
+      <td>
+        <div class="actions-cell">
+          <button class="btn btn-ghost btn-xs view-btn" data-id="${e.id}">View</button>
+          ${can.edit() ? `<button class="btn btn-ghost btn-xs edit-btn hide-mobile" data-id="${e.id}">Edit</button>` : ''}
+          ${can.delete() ? `<button class="btn btn-danger btn-xs delete-btn hide-mobile" data-id="${e.id}">Del</button>` : ''}
+        </div>
       </td>
     </tr>
   `;
@@ -593,13 +597,14 @@ function renderListerCard(user) {
   `;
 }
 
-// ---- Profile Modal ----
+// ---- Profile Modal / Page ----
 function renderProfileModal(userId, editable) {
+  if (isMobile()) { renderProfilePage(userId, editable); return; }
+
   const user = getUserById(userId);
   if (!user) return;
   const isOwnProfile = currentUser && currentUser.id === userId;
   const canEdit = editable && isOwnProfile;
-  const discord = user.discord && user.discord.linked ? user.discord : null;
 
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
@@ -615,10 +620,26 @@ function renderProfileModal(userId, editable) {
     </div>
   `;
   document.body.appendChild(modal);
-  modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => modal.remove()));
   modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
-
   bindProfileEvents(modal, user, canEdit);
+}
+
+function renderProfilePage(userId, editable) {
+  const user = getUserById(userId);
+  if (!user) return;
+  const isOwnProfile = currentUser && currentUser.id === userId;
+  const canEdit = editable && isOwnProfile;
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = `
+    <div class="detail-page-topbar">
+      <button class="btn btn-ghost" id="profilePageBack">← Back</button>
+    </div>
+    <div class="page-form-wrap" id="profileModalBody">
+      ${renderProfileView(user, canEdit)}
+    </div>
+  `;
+  document.getElementById('profilePageBack').addEventListener('click', () => renderDatabase());
+  bindProfileEvents(mc, user, canEdit, () => renderDatabase());
 }
 
 function renderProfileView(user, canEdit) {
@@ -738,7 +759,8 @@ function renderProfileEditForm(user) {
   `;
 }
 
-function bindProfileEvents(modal, user, canEdit) {
+function bindProfileEvents(modal, user, canEdit, onClose) {
+  const dismiss = onClose || (() => modal.remove());
   const body = modal.querySelector('#profileModalBody');
 
   function switchToEdit() {
@@ -754,7 +776,7 @@ function bindProfileEvents(modal, user, canEdit) {
   function bindViewEvents() {
     const editBtn = body.querySelector('#editProfileBtn');
     if (editBtn) editBtn.addEventListener('click', switchToEdit);
-    modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => modal.remove()));
+    modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', dismiss));
   }
 
   function bindEditFormEvents() {
@@ -779,6 +801,7 @@ function bindProfileEvents(modal, user, canEdit) {
     }
 
     body.querySelector('#cancelEditProfileBtn').addEventListener('click', switchToView);
+    body.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', dismiss));
 
     body.querySelector('#saveProfileBtn').addEventListener('click', () => {
       const displayName = body.querySelector('#pfDisplayName').value.trim();
@@ -860,74 +883,51 @@ function simulateDiscordOAuth(user, onComplete) {
   });
 }
 
-// ---- Entry Add/Edit Modal ----
-function renderEntryModal(id = null) {
-  const existing = id ? entries.find(e => e.id === id) : null;
-  const title = existing ? 'Edit Entry' : 'Add Entry';
-
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `
-    <div class="modal modal-form">
-      <div class="modal-header">
-        <h3>${title}</h3>
-        <button class="modal-close" data-close>✕</button>
+// ---- Entry Add/Edit Modal / Page ----
+function entryFormHTML(existing) {
+  return `
+    <div class="form-group">
+      <label>Handle / Username <span class="required">*</span></label>
+      <input type="text" id="fHandle" value="${existing ? escHtml(existing.handle) : ''}" placeholder="Primary online handle" required />
+    </div>
+    <div class="form-group">
+      <label>Known Aliases <span class="hint">(comma-separated)</span></label>
+      <input type="text" id="fAliases" value="${existing ? escHtml(existing.aliases.join(', ')) : ''}" placeholder="e.g. AltHandle, OldName" />
+    </div>
+    <div class="form-group">
+      <label>Counties Active <span class="required">*</span></label>
+      <div id="fAreasMount"></div>
+    </div>
+    <div class="form-group">
+      <label>Description <span class="required">*</span></label>
+      <textarea id="fDesc" rows="4" placeholder="Describe the concern…" required>${existing ? escHtml(existing.description) : ''}</textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Severity <span class="required">*</span></label>
+        <select id="fSeverity" required>
+          <option value="">Select…</option>
+          <option value="high" ${existing && existing.severity === 'high' ? 'selected' : ''}>High</option>
+          <option value="medium" ${existing && existing.severity === 'medium' ? 'selected' : ''}>Medium</option>
+          <option value="low" ${existing && existing.severity === 'low' ? 'selected' : ''}>Low</option>
+        </select>
       </div>
-      <div class="modal-body">
-        <form id="entryForm">
-          <div class="form-group">
-            <label>Handle / Username <span class="required">*</span></label>
-            <input type="text" id="fHandle" value="${existing ? escHtml(existing.handle) : ''}" placeholder="Primary online handle" required />
-          </div>
-          <div class="form-group">
-            <label>Known Aliases <span class="hint">(comma-separated)</span></label>
-            <input type="text" id="fAliases" value="${existing ? escHtml(existing.aliases.join(', ')) : ''}" placeholder="e.g. AltHandle, OldName" />
-          </div>
-          <div class="form-group">
-            <label>Counties Active <span class="required">*</span></label>
-            <div id="fAreasMount"></div>
-          </div>
-          <div class="form-group">
-            <label>Description <span class="required">*</span></label>
-            <textarea id="fDesc" rows="4" placeholder="Describe the concern…" required>${existing ? escHtml(existing.description) : ''}</textarea>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Severity <span class="required">*</span></label>
-              <select id="fSeverity" required>
-                <option value="">Select…</option>
-                <option value="high" ${existing && existing.severity === 'high' ? 'selected' : ''}>High</option>
-                <option value="medium" ${existing && existing.severity === 'medium' ? 'selected' : ''}>Medium</option>
-                <option value="low" ${existing && existing.severity === 'low' ? 'selected' : ''}>Low</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Status <span class="required">*</span></label>
-              <select id="fStatus" required>
-                <option value="">Select…</option>
-                <option value="active" ${existing && existing.status === 'active' ? 'selected' : ''}>Active</option>
-                <option value="under_review" ${existing && existing.status === 'under_review' ? 'selected' : ''}>Under Review</option>
-                <option value="resolved" ${existing && existing.status === 'resolved' ? 'selected' : ''}>Resolved</option>
-              </select>
-            </div>
-          </div>
-          <div id="formError" class="alert alert-error" style="display:none"></div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-primary" id="saveEntryBtn">Save</button>
-        <button class="btn btn-ghost" data-close>Cancel</button>
+      <div class="form-group">
+        <label>Status <span class="required">*</span></label>
+        <select id="fStatus" required>
+          <option value="">Select…</option>
+          <option value="active" ${existing && existing.status === 'active' ? 'selected' : ''}>Active</option>
+          <option value="under_review" ${existing && existing.status === 'under_review' ? 'selected' : ''}>Under Review</option>
+          <option value="resolved" ${existing && existing.status === 'resolved' ? 'selected' : ''}>Resolved</option>
+        </select>
       </div>
     </div>
+    <div id="formError" class="alert alert-error" style="display:none"></div>
   `;
-  document.body.appendChild(modal);
-  modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => modal.remove()));
-  modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+}
 
-  // Mount multiselect into the placeholder
-  const ms = createMultiselect(AREAS, existing ? existing.areas : [], 'Select counties…');
-  document.getElementById('fAreasMount').appendChild(ms.el);
-
+function bindEntryFormEvents(existing, ms, onCancel, onSaved) {
+  const id = existing ? existing.id : null;
   document.getElementById('saveEntryBtn').addEventListener('click', () => {
     const handle = document.getElementById('fHandle').value.trim();
     const aliasRaw = document.getElementById('fAliases').value.trim();
@@ -948,14 +948,74 @@ function renderEntryModal(id = null) {
     if (existing) {
       const idx = entries.findIndex(e => e.id === id);
       entries[idx] = { ...entries[idx], handle, aliases, areas, description, severity, status, dateUpdated: now };
-      modal.remove();
-      renderEntryDetail(id);
+      onSaved(id);
     } else {
       const newId = 'e' + Date.now();
       entries.unshift({ id: newId, handle, aliases, areas, description, severity, status, listedBy: currentUser.id, dateAdded: now, dateUpdated: now });
-      modal.remove();
-      renderDatabase();
+      onSaved(null);
     }
+  });
+  document.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', onCancel));
+}
+
+function renderEntryModal(id = null) {
+  if (isMobile()) { renderEntryPage(id); return; }
+
+  const existing = id ? entries.find(e => e.id === id) : null;
+  const title = existing ? 'Edit Entry' : 'Add Entry';
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal modal-form">
+      <div class="modal-header">
+        <h3>${title}</h3>
+        <button class="modal-close" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="entryForm">${entryFormHTML(existing)}</form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" id="saveEntryBtn">Save</button>
+        <button class="btn btn-ghost" data-close>Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+
+  const ms = createMultiselect(AREAS, existing ? existing.areas : [], 'Select counties…');
+  document.getElementById('fAreasMount').appendChild(ms.el);
+
+  bindEntryFormEvents(existing, ms, () => modal.remove(), (savedId) => {
+    modal.remove();
+    savedId ? renderEntryDetail(savedId) : renderDatabase();
+  });
+}
+
+function renderEntryPage(id = null) {
+  const existing = id ? entries.find(e => e.id === id) : null;
+  const title = existing ? 'Edit Entry' : 'Add Entry';
+  const mc = document.getElementById('mainContent');
+  mc.innerHTML = `
+    <div class="detail-page-topbar">
+      <button class="btn btn-ghost" id="entryPageBack">← Cancel</button>
+      <button class="btn btn-primary" id="saveEntryBtn">Save</button>
+    </div>
+    <div class="page-form-wrap">
+      <h2 style="margin-bottom:20px">${title}</h2>
+      <form id="entryForm">${entryFormHTML(existing)}</form>
+    </div>
+  `;
+
+  const ms = createMultiselect(AREAS, existing ? existing.areas : [], 'Select counties…');
+  document.getElementById('fAreasMount').appendChild(ms.el);
+
+  const onCancel = () => id ? renderEntryDetail(id) : renderDatabase();
+  document.getElementById('entryPageBack').addEventListener('click', onCancel);
+
+  bindEntryFormEvents(existing, ms, onCancel, (savedId) => {
+    savedId ? renderEntryDetail(savedId) : renderDatabase();
   });
 }
 
@@ -1032,7 +1092,7 @@ function renderUsers() {
               <td>${u.email ? `<a href="mailto:${escHtml(u.email)}">${escHtml(u.email)}</a>` : '<span style="color:var(--text-dim)">—</span>'}</td>
               <td>${discord ? `<span style="font-size:0.85rem">${escHtml(discord)}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
               <td>${u.fetlife ? `<a href="${escHtml(u.fetlife)}" target="_blank" rel="noopener">View</a>` : '<span style="color:var(--text-dim)">—</span>'}</td>
-              <td class="actions-cell"><button class="btn btn-ghost btn-xs view-user-btn" data-uid="${u.id}">View</button></td>
+              <td><div class="actions-cell"><button class="btn btn-ghost btn-xs view-user-btn" data-uid="${u.id}">View</button></div></td>
             </tr>`;
           }).join('')}
         </tbody>
