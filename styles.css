@@ -186,8 +186,8 @@ select:focus { border-color: var(--accent); }
 }
 .entry-table tbody tr:last-child td { border-bottom: none; }
 .entry-table tbody tr:hover { background: var(--bg-hover); }
-.col-actions { width: 1%; }
-.actions-cell { white-space: nowrap; display: flex; gap: 5px; padding-top: 9px; }
+.col-actions { width: 1%; white-space: nowrap; }
+.actions-cell { white-space: nowrap; display: flex; gap: 5px; align-items: center; }
 .date-cell { white-space: nowrap; color: var(--text-muted); font-size: 0.8rem; }
 .results-count { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px; }
 
@@ -563,3 +563,125 @@ select:focus { border-color: var(--accent); }
 .role-list { display: flex; flex-direction: column; gap: 10px; }
 .role-item { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-muted); }
 .demo-note { color: var(--text-dim); font-size: 0.8rem; margin-top: 16px; padding: 12px 16px; background: var(--amber-dim); border: 1px solid rgba(224,160,80,0.2); border-radius: var(--radius-sm); }
+
+/* ================================================================
+   RESPONSIVE
+   ================================================================ */
+
+/* ---- Tablet: hide Listed By + Date Added columns (5 & 6) ---- */
+@media (max-width: 900px) {
+  .col-listed-by,
+  .col-date-added,
+  .entry-table td:nth-child(5),
+  .entry-table td:nth-child(6) { display: none; }
+
+  .main-content { padding: 16px 16px; }
+}
+
+/* ---- Mobile: also hide Counties column (2) ---- */
+@media (max-width: 600px) {
+  .col-counties,
+  .entry-table td:nth-child(2) { display: none; }
+
+  /* Compact badges */
+  .sev-badge, .status-badge { padding: 2px 6px; font-size: 0.68rem; }
+
+  /* Hide edit/del from table on mobile — they're in the detail modal */
+  .hide-mobile { display: none !important; }
+
+  /* Prevent table overflow */
+  .entry-table { table-layout: fixed; }
+  .entry-table th:nth-child(3),
+  .entry-table td:nth-child(3) { width: 74px; }
+  .entry-table th:nth-child(4),
+  .entry-table td:nth-child(4) { width: 90px; }
+  .entry-table .col-actions,
+  .entry-table td:nth-child(7) { width: 64px; }
+  .handle-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .main-content { padding: 12px; }
+  .view-header { flex-wrap: wrap; gap: 10px; }
+  .view-header h2 { font-size: 1.1rem; }
+
+  /* Filter bar: search full width, dropdowns wrap */
+  .filter-bar { gap: 8px; }
+  .filter-search { min-width: 100%; order: -1; }
+  .filter-bar select { flex: 1; min-width: 0; font-size: 0.8rem; padding: 7px 6px; }
+
+  /* Table tighter padding */
+  .entry-table th, .entry-table td { padding: 9px 10px; }
+
+  /* Entry modal form row stacks */
+  .form-row { grid-template-columns: 1fr; }
+}
+
+/* ---- Shell layout: desktop sidebar vs mobile bottom nav ---- */
+@media (max-width: 768px) {
+  .shell {
+    grid-template-rows: 48px 1fr 56px;
+    grid-template-columns: 1fr;
+    grid-template-areas: "topbar" "main" "nav";
+  }
+
+  .sidenav {
+    border-right: none;
+    border-top: 1px solid var(--border);
+    flex-direction: row;
+    justify-content: space-around;
+    padding: 0;
+    overflow: visible;
+  }
+
+  .nav-link {
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 8px;
+    border-radius: 0;
+    font-size: 0.65rem;
+    flex: 1;
+    text-align: center;
+  }
+
+  /* Strip emoji down a touch on mobile */
+  .nav-link { letter-spacing: 0; }
+
+  /* Topbar: hide long title on narrow screens */
+  .topbar-title { display: none; }
+
+  /* Compact topbar */
+  .topbar { padding: 0 12px; }
+  .topbar-logo { font-size: 1rem; }
+
+  /* Profile button: hide display name, keep avatar + role */
+  .topbar-profile-btn .role-badge { display: none; }
+
+  /* Main content: account for bottom nav */
+  .main-content { overflow-y: auto; }
+}
+
+/* ---- Modals: full-screen on mobile ---- */
+@media (max-width: 600px) {
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal {
+    max-width: 100% !important;
+    width: 100%;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    max-height: 92vh;
+  }
+
+  /* Login: no card on tiny screens */
+  .login-box { border: none; padding: 28px 20px; }
+
+  /* Profile header compact */
+  .profile-header { flex-direction: column; align-items: center; text-align: center; }
+  .profile-meta { justify-content: center; }
+}
+
+/* ---- Login page always centered ---- */
+@media (max-width: 480px) {
+  .login-wrap { align-items: flex-start; padding-top: 32px; }
+  .login-box { max-width: 100%; }
+}

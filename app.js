@@ -348,11 +348,11 @@ function renderEntriesTable() {
         <thead>
           <tr>
             <th>Handle / Aliases</th>
-            <th>Counties</th>
+            <th class="col-counties">Counties</th>
             <th>Severity</th>
             <th>Status</th>
-            <th>Listed By</th>
-            <th>Date Added</th>
+            <th class="col-listed-by">Listed By</th>
+            <th class="col-date-added">Date Added</th>
             <th class="col-actions">Actions</th>
           </tr>
         </thead>
@@ -393,8 +393,8 @@ function renderEntryRow(e) {
       <td class="date-cell">${formatDate(e.dateAdded)}</td>
       <td class="actions-cell">
         <button class="btn btn-ghost btn-xs view-btn" data-id="${e.id}">View</button>
-        ${can.edit() ? `<button class="btn btn-ghost btn-xs edit-btn" data-id="${e.id}">Edit</button>` : ''}
-        ${can.delete() ? `<button class="btn btn-danger btn-xs delete-btn" data-id="${e.id}">Del</button>` : ''}
+        ${can.edit() ? `<button class="btn btn-ghost btn-xs edit-btn hide-mobile" data-id="${e.id}">Edit</button>` : ''}
+        ${can.delete() ? `<button class="btn btn-danger btn-xs delete-btn hide-mobile" data-id="${e.id}">Del</button>` : ''}
       </td>
     </tr>
   `;
