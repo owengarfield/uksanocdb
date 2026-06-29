@@ -564,6 +564,76 @@ select:focus { border-color: var(--accent); }
 .role-item { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; color: var(--text-muted); }
 .demo-note { color: var(--text-dim); font-size: 0.8rem; margin-top: 16px; padding: 12px 16px; background: var(--amber-dim); border: 1px solid rgba(224,160,80,0.2); border-radius: var(--radius-sm); }
 
+/* ---- Detail Page ---- */
+.detail-page { display: flex; flex-direction: column; height: 100%; }
+.detail-page-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px; gap: 12px;
+}
+.detail-page-actions { display: flex; gap: 8px; }
+.detail-page-body {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 24px;
+  align-items: start;
+  flex: 1;
+  overflow: auto;
+}
+.detail-page-main { display: flex; flex-direction: column; gap: 0; }
+.detail-title-row { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.detail-title-row h2 { font-size: 1.5rem; font-weight: 700; }
+.detail-badges { display: flex; gap: 6px; align-items: center; padding-top: 4px; }
+.detail-desc { line-height: 1.7; color: var(--text); }
+
+/* ---- Comments ---- */
+.detail-page-comments {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.comments-header { display: flex; align-items: center; gap: 10px; }
+.comments-header h3 { font-size: 0.95rem; font-weight: 600; }
+.comments-count {
+  background: rgba(79,126,247,0.15); color: var(--accent-hi);
+  border: 1px solid rgba(79,126,247,0.3);
+  border-radius: 999px; font-size: 0.72rem; font-weight: 600;
+  padding: 1px 8px; min-width: 24px; text-align: center;
+}
+.add-comment-box { display: flex; gap: 10px; align-items: flex-start; }
+.add-comment-avatar {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.65rem; font-weight: 700; color: #fff;
+}
+.add-comment-form { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.add-comment-form textarea {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 9px 12px; color: var(--text);
+  resize: vertical; outline: none; font-size: 0.875rem;
+}
+.add-comment-form textarea:focus { border-color: var(--accent); }
+.add-comment-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.add-comment-hint { font-size: 0.75rem; color: var(--text-dim); }
+.comments-list { display: flex; flex-direction: column; gap: 12px; }
+.comments-empty { text-align: center; color: var(--text-dim); font-size: 0.85rem; padding: 20px 0; }
+.comment-card { display: flex; gap: 10px; }
+.comment-avatar {
+  width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, var(--accent), var(--purple));
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.6rem; font-weight: 700; color: #fff;
+}
+.comment-body { flex: 1; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; }
+.comment-meta { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 6px; }
+.comment-author { font-weight: 600; font-size: 0.85rem; }
+.comment-date { font-size: 0.75rem; color: var(--text-dim); margin-left: auto; }
+.comment-text { font-size: 0.875rem; color: var(--text-muted); line-height: 1.6; }
+
 /* ================================================================
    RESPONSIVE
    ================================================================ */
@@ -684,4 +754,21 @@ select:focus { border-color: var(--accent); }
 @media (max-width: 480px) {
   .login-wrap { align-items: flex-start; padding-top: 32px; }
   .login-box { max-width: 100%; }
+}
+
+/* ---- Detail page: stack on mobile ---- */
+@media (max-width: 900px) {
+  .detail-page-body {
+    grid-template-columns: 1fr;
+  }
+  .detail-page-comments {
+    /* comments below main info on mobile */
+  }
+}
+
+@media (max-width: 600px) {
+  .detail-title-row { flex-direction: column; gap: 8px; }
+  .detail-title-row h2 { font-size: 1.2rem; }
+  .add-comment-footer { flex-direction: column; align-items: flex-start; }
+  .comment-date { margin-left: 0; }
 }

@@ -1,5 +1,4 @@
 // ---- Multiselect dropdown component ----
-// Returns { el, getSelected } — el is the DOM node to insert, getSelected() returns current array
 function createMultiselect(options, selected = [], placeholder = 'Select…') {
   let current = [...selected];
   let open = false;
@@ -8,96 +7,100 @@ function createMultiselect(options, selected = [], placeholder = 'Select…') {
   const wrap = document.createElement('div');
   wrap.className = 'ms-wrap';
 
-  function render() {
-    const filtered = searchTerm
-      ? options.filter(o => o.toLowerCase().includes(searchTerm.toLowerCase()))
-      : options;
+  function renderTags() {
+    const tagsEl = wrap.querySelector('.ms-tags');
+    if (!tagsEl) return;
+    tagsEl.innerHTML = current.length === 0
+      ? `<span class="ms-placeholder">${escHtml(placeholder)}</span>`
+      : current.map(v => `<span class="ms-tag">${escHtml(v)}<button type="button" class="ms-tag-remove" data-val="${escHtml(v)}">✕</button></span>`).join('');
+    tagsEl.querySelectorAll('.ms-tag-remove').forEach(btn => {
+      btn.addEventListener('click', e => { e.stopPropagation(); current = current.filter(v => v !== btn.dataset.val); renderTags(); });
+    });
+  }
 
-    wrap.innerHTML = `
-      <div class="ms-control ${open ? 'ms-open' : ''}" tabindex="0">
-        <div class="ms-tags">
-          ${current.length === 0
-            ? `<span class="ms-placeholder">${escHtml(placeholder)}</span>`
-            : current.map(v => `<span class="ms-tag">${escHtml(v)}<button class="ms-tag-remove" data-val="${escHtml(v)}">✕</button></span>`).join('')}
-        </div>
-        <span class="ms-arrow">${open ? '▲' : '▼'}</span>
+  function openDropdown() {
+    if (open) return;
+    open = true;
+    searchTerm = '';
+    wrap.querySelector('.ms-control').classList.add('ms-open');
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'ms-dropdown';
+    dropdown.innerHTML = `
+      <div class="ms-search-wrap">
+        <input class="ms-search" type="text" placeholder="Search counties…" />
       </div>
-      ${open ? `
-      <div class="ms-dropdown">
-        <div class="ms-search-wrap">
-          <input class="ms-search" type="text" placeholder="Search counties…" value="${escHtml(searchTerm)}" />
-        </div>
-        <div class="ms-options">
-          ${filtered.length === 0
-            ? '<div class="ms-empty">No matches</div>'
-            : filtered.map(o => `
-              <label class="ms-option ${current.includes(o) ? 'ms-selected' : ''}">
-                <input type="checkbox" ${current.includes(o) ? 'checked' : ''} data-opt="${escHtml(o)}" />
-                ${escHtml(o)}
-              </label>`).join('')}
-        </div>
-      </div>` : ''}
+      <div class="ms-options"></div>
     `;
+    wrap.appendChild(dropdown);
 
-    // Control click — toggle open
-    wrap.querySelector('.ms-control').addEventListener('mousedown', e => {
-      if (e.target.classList.contains('ms-tag-remove') || e.target.closest('.ms-tag-remove')) return;
-      e.preventDefault();
-      open = !open;
-      searchTerm = '';
-      render();
-      if (open) setTimeout(() => wrap.querySelector('.ms-search')?.focus(), 0);
-    });
+    const searchEl = dropdown.querySelector('.ms-search');
+    const optionsEl = dropdown.querySelector('.ms-options');
 
-    // Tag remove
-    wrap.querySelectorAll('.ms-tag-remove').forEach(btn => {
-      btn.addEventListener('click', e => {
-        e.stopPropagation();
-        current = current.filter(v => v !== btn.dataset.val);
-        render();
-      });
-    });
-
-    if (open) {
-      // Search input
-      const searchEl = wrap.querySelector('.ms-search');
-      searchEl.addEventListener('input', e => { searchTerm = e.target.value; render(); });
-      searchEl.addEventListener('mousedown', e => e.stopPropagation());
-      searchEl.addEventListener('keydown', e => { if (e.key === 'Escape') { open = false; render(); } });
-
-      // Checkboxes
-      wrap.querySelectorAll('.ms-option input').forEach(cb => {
+    function renderOptions() {
+      const filtered = searchTerm
+        ? options.filter(o => o.toLowerCase().includes(searchTerm.toLowerCase()))
+        : options;
+      optionsEl.innerHTML = filtered.length === 0
+        ? '<div class="ms-empty">No matches</div>'
+        : filtered.map(o => `
+          <label class="ms-option ${current.includes(o) ? 'ms-selected' : ''}">
+            <input type="checkbox" ${current.includes(o) ? 'checked' : ''} data-opt="${escHtml(o)}" />
+            ${escHtml(o)}
+          </label>`).join('');
+      optionsEl.querySelectorAll('input[type=checkbox]').forEach(cb => {
         cb.addEventListener('change', () => {
           const val = cb.dataset.opt;
           if (cb.checked) { if (!current.includes(val)) current.push(val); }
           else { current = current.filter(v => v !== val); }
-          // Re-render only the tags area & options to preserve scroll
-          wrap.querySelector('.ms-tags').innerHTML = current.length === 0
-            ? `<span class="ms-placeholder">${escHtml(placeholder)}</span>`
-            : current.map(v => `<span class="ms-tag">${escHtml(v)}<button class="ms-tag-remove" data-val="${escHtml(v)}">✕</button></span>`).join('');
-          wrap.querySelectorAll('.ms-option').forEach(opt => {
-            const v = opt.querySelector('input').dataset.opt;
-            opt.classList.toggle('ms-selected', current.includes(v));
-          });
-          // Re-bind tag removes
-          wrap.querySelectorAll('.ms-tag-remove').forEach(btn => {
-            btn.addEventListener('click', e => { e.stopPropagation(); current = current.filter(v => v !== btn.dataset.val); render(); });
-          });
+          cb.closest('.ms-option').classList.toggle('ms-selected', cb.checked);
+          renderTags();
         });
       });
     }
+
+    renderOptions();
+    searchEl.focus();
+    searchEl.addEventListener('input', e => { searchTerm = e.target.value; renderOptions(); });
+    searchEl.addEventListener('keydown', e => { if (e.key === 'Escape') closeDropdown(); });
   }
 
-  render();
+  function closeDropdown() {
+    if (!open) return;
+    open = false;
+    wrap.querySelector('.ms-control')?.classList.remove('ms-open');
+    wrap.querySelector('.ms-dropdown')?.remove();
+  }
+
+  // Initial render
+  wrap.innerHTML = `
+    <div class="ms-control" tabindex="0">
+      <div class="ms-tags"></div>
+      <span class="ms-arrow">▼</span>
+    </div>
+  `;
+  renderTags();
+
+  wrap.querySelector('.ms-control').addEventListener('click', e => {
+    if (e.target.classList.contains('ms-tag-remove') || e.target.closest('.ms-tag-remove')) return;
+    open ? closeDropdown() : openDropdown();
+  });
+  wrap.querySelector('.ms-control').addEventListener('keydown', e => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); open ? closeDropdown() : openDropdown(); }
+  });
 
   // Close on outside click
   function onOutsideClick(e) {
-    if (!wrap.contains(e.target)) { open = false; render(); }
+    if (open && !wrap.contains(e.target)) closeDropdown();
   }
-  document.addEventListener('mousedown', onOutsideClick);
-  // Clean up listener when element is removed
+  document.addEventListener('click', onOutsideClick, true);
+
+  // Clean up when removed from DOM
   const observer = new MutationObserver(() => {
-    if (!document.contains(wrap)) { document.removeEventListener('mousedown', onOutsideClick); observer.disconnect(); }
+    if (!document.contains(wrap)) {
+      document.removeEventListener('click', onOutsideClick, true);
+      observer.disconnect();
+    }
   });
   observer.observe(document.body, { childList: true, subtree: true });
 
@@ -107,9 +110,11 @@ function createMultiselect(options, selected = [], placeholder = 'Select…') {
 // ---- State ----
 let currentUser = null;
 let entries = JSON.parse(JSON.stringify(MOCK_ENTRIES));
-let users = JSON.parse(JSON.stringify(MOCK_USERS)); // working copy so profiles are editable
+let users = JSON.parse(JSON.stringify(MOCK_USERS));
+let comments = JSON.parse(JSON.stringify(MOCK_COMMENTS));
 let editingId = null;
 let filterState = { search: '', area: '', severity: '', status: '' };
+let detailStack = []; // navigation stack for mobile detail pages
 
 // ---- Auth ----
 function login(username, password) {
@@ -400,68 +405,144 @@ function renderEntryRow(e) {
   `;
 }
 
-// ---- Entry Detail Modal ----
+// ---- Entry Detail Page (full-page, replaces main content) ----
 function renderEntryDetail(id) {
   const e = entries.find(x => x.id === id);
   if (!e) return;
   const lister = getUserById(e.listedBy);
+  const mc = document.getElementById('mainContent');
+  const entryComments = comments.filter(c => c.entryId === id);
 
-  const modal = document.createElement('div');
-  modal.className = 'modal-overlay';
-  modal.innerHTML = `
-    <div class="modal modal-detail">
-      <div class="modal-header">
-        <div>
-          <h3>${escHtml(e.handle)}</h3>
-          <div class="modal-badges">
-            <span class="sev-badge ${severityClass(e.severity)}">${severityLabel(e.severity)}</span>
-            <span class="status-badge ${statusClass(e.status)}">${statusLabel(e.status)}</span>
+  mc.innerHTML = `
+    <div class="detail-page">
+      <div class="detail-page-topbar">
+        <button class="btn btn-ghost btn-sm" id="backToDbBtn">← Back</button>
+        <div class="detail-page-actions">
+          ${can.edit() ? `<button class="btn btn-secondary btn-sm" id="editEntryBtn">Edit</button>` : ''}
+          ${can.delete() ? `<button class="btn btn-danger btn-sm" id="deleteEntryBtn">Delete</button>` : ''}
+        </div>
+      </div>
+
+      <div class="detail-page-body">
+        <div class="detail-page-main">
+          <div class="detail-title-row">
+            <h2>${escHtml(e.handle)}</h2>
+            <div class="detail-badges">
+              <span class="sev-badge ${severityClass(e.severity)}">${severityLabel(e.severity)}</span>
+              <span class="status-badge ${statusClass(e.status)}">${statusLabel(e.status)}</span>
+            </div>
+          </div>
+
+          ${e.aliases.length > 0 ? `
+          <div class="detail-row">
+            <span class="detail-label">Known aliases</span>
+            <span class="detail-value">${e.aliases.map(escHtml).join(', ')}</span>
+          </div>` : ''}
+
+          <div class="detail-row">
+            <span class="detail-label">Counties</span>
+            <div class="detail-value areas-cell">
+              ${e.areas.map(a => `<span class="area-tag">${escHtml(a)}</span>`).join('')}
+            </div>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-label">Description</span>
+            <span class="detail-value detail-desc">${escHtml(e.description)}</span>
+          </div>
+
+          <div class="detail-row">
+            <span class="detail-label">Date added</span>
+            <span class="detail-value">${formatDate(e.dateAdded)}</span>
+          </div>
+          <div class="detail-row">
+            <span class="detail-label">Last updated</span>
+            <span class="detail-value">${formatDate(e.dateUpdated)}</span>
+          </div>
+
+          ${lister ? `
+          <div class="detail-section-title">Listed by</div>
+          ${renderListerCard(lister)}
+          <button class="btn btn-ghost btn-sm" id="viewListerProfileBtn" style="margin-top:8px">View Profile</button>
+          ` : ''}
+        </div>
+
+        <div class="detail-page-comments">
+          <div class="comments-header">
+            <h3>Community Comments</h3>
+            <span class="comments-count">${entryComments.length}</span>
+          </div>
+
+          <div class="add-comment-box">
+            <div class="add-comment-avatar">${avatarInitials(currentUser)}</div>
+            <div class="add-comment-form">
+              <textarea id="commentText" placeholder="Share your experience with this person, or vouch for them…" rows="3"></textarea>
+              <div class="add-comment-footer">
+                <span class="add-comment-hint">Posting as ${escHtml(currentUser.displayName || currentUser.username)}</span>
+                <button class="btn btn-primary btn-sm" id="submitCommentBtn">Post Comment</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="comments-list" id="commentsList">
+            ${renderCommentsList(entryComments)}
           </div>
         </div>
-        <button class="modal-close" data-close>✕</button>
-      </div>
-      <div class="modal-body">
-        ${e.aliases.length > 0 ? `
-        <div class="detail-row">
-          <span class="detail-label">Known aliases</span>
-          <span class="detail-value">${e.aliases.map(escHtml).join(', ')}</span>
-        </div>` : ''}
-        <div class="detail-row">
-          <span class="detail-label">Counties</span>
-          <div class="detail-value areas-cell">
-            ${e.areas.map(a => `<span class="area-tag">${escHtml(a)}</span>`).join('')}
-          </div>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Description</span>
-          <span class="detail-value">${escHtml(e.description)}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Date added</span>
-          <span class="detail-value">${formatDate(e.dateAdded)}</span>
-        </div>
-        <div class="detail-row">
-          <span class="detail-label">Last updated</span>
-          <span class="detail-value">${formatDate(e.dateUpdated)}</span>
-        </div>
-        ${lister ? `
-        <div class="detail-section-title">Listed by</div>
-        ${renderListerCard(lister)}` : ''}
-      </div>
-      <div class="modal-footer">
-        ${lister ? `<button class="btn btn-ghost" id="viewListerProfileBtn">View Profile</button>` : ''}
-        ${can.edit() ? `<button class="btn btn-secondary" id="editFromDetailBtn">Edit Entry</button>` : ''}
-        <button class="btn btn-ghost" data-close>Close</button>
       </div>
     </div>
   `;
-  document.body.appendChild(modal);
-  modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => modal.remove()));
-  modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
-  const editBtn = modal.querySelector('#editFromDetailBtn');
-  if (editBtn) editBtn.addEventListener('click', () => { modal.remove(); editingId = id; renderEntryModal(id); });
-  const profileBtn = modal.querySelector('#viewListerProfileBtn');
-  if (profileBtn) profileBtn.addEventListener('click', () => { modal.remove(); renderProfileModal(lister.id, false); });
+
+  document.getElementById('backToDbBtn').addEventListener('click', () => {
+    renderDatabase();
+  });
+
+  const editBtn = mc.querySelector('#editEntryBtn');
+  if (editBtn) editBtn.addEventListener('click', () => renderEntryModal(id));
+
+  const deleteBtn = mc.querySelector('#deleteEntryBtn');
+  if (deleteBtn) deleteBtn.addEventListener('click', () => confirmDelete(id));
+
+  const profileBtn = mc.querySelector('#viewListerProfileBtn');
+  if (profileBtn) profileBtn.addEventListener('click', () => renderProfileModal(lister.id, false));
+
+  document.getElementById('submitCommentBtn').addEventListener('click', () => {
+    const text = document.getElementById('commentText').value.trim();
+    if (!text) return;
+    const newComment = {
+      id: 'cm' + Date.now(),
+      entryId: id,
+      authorId: currentUser.id,
+      text,
+      date: new Date().toISOString().slice(0, 10),
+    };
+    comments.push(newComment);
+    document.getElementById('commentText').value = '';
+    const updated = comments.filter(c => c.entryId === id);
+    document.getElementById('commentsList').innerHTML = renderCommentsList(updated);
+    mc.querySelector('.comments-count').textContent = updated.length;
+  });
+}
+
+function renderCommentsList(entryComments) {
+  if (entryComments.length === 0) {
+    return `<div class="comments-empty">No comments yet. Be the first to share your experience.</div>`;
+  }
+  return entryComments.map(c => {
+    const author = getUserById(c.authorId);
+    return `
+      <div class="comment-card">
+        <div class="comment-avatar">${author ? avatarInitials(author) : '?'}</div>
+        <div class="comment-body">
+          <div class="comment-meta">
+            <span class="comment-author">${author ? escHtml(author.displayName || author.username) : 'Unknown'}</span>
+            <span class="role-badge role-${author?.role || 'user'}">${author?.role || 'user'}</span>
+            <span class="comment-date">${formatDate(c.date)}</span>
+          </div>
+          <p class="comment-text">${escHtml(c.text)}</p>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function renderListerCard(user) {
@@ -844,11 +925,14 @@ function renderEntryModal(id = null) {
     if (existing) {
       const idx = entries.findIndex(e => e.id === id);
       entries[idx] = { ...entries[idx], handle, aliases, areas, description, severity, status, dateUpdated: now };
+      modal.remove();
+      renderEntryDetail(id);
     } else {
-      entries.unshift({ id: 'e' + Date.now(), handle, aliases, areas, description, severity, status, listedBy: currentUser.id, dateAdded: now, dateUpdated: now });
+      const newId = 'e' + Date.now();
+      entries.unshift({ id: newId, handle, aliases, areas, description, severity, status, listedBy: currentUser.id, dateAdded: now, dateUpdated: now });
+      modal.remove();
+      renderDatabase();
     }
-    modal.remove();
-    renderDatabase();
   });
 }
 
@@ -879,6 +963,7 @@ function confirmDelete(id) {
   modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
   document.getElementById('confirmDelBtn').addEventListener('click', () => {
     entries = entries.filter(x => x.id !== id);
+    comments = comments.filter(c => c.entryId !== id);
     modal.remove();
     renderDatabase();
   });
