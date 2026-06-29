@@ -1,12 +1,119 @@
+// ---- Multiselect dropdown component ----
+// Returns { el, getSelected } — el is the DOM node to insert, getSelected() returns current array
+function createMultiselect(options, selected = [], placeholder = 'Select…') {
+  let current = [...selected];
+  let open = false;
+  let searchTerm = '';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'ms-wrap';
+
+  function render() {
+    const filtered = searchTerm
+      ? options.filter(o => o.toLowerCase().includes(searchTerm.toLowerCase()))
+      : options;
+
+    wrap.innerHTML = `
+      <div class="ms-control ${open ? 'ms-open' : ''}" tabindex="0">
+        <div class="ms-tags">
+          ${current.length === 0
+            ? `<span class="ms-placeholder">${escHtml(placeholder)}</span>`
+            : current.map(v => `<span class="ms-tag">${escHtml(v)}<button class="ms-tag-remove" data-val="${escHtml(v)}">✕</button></span>`).join('')}
+        </div>
+        <span class="ms-arrow">${open ? '▲' : '▼'}</span>
+      </div>
+      ${open ? `
+      <div class="ms-dropdown">
+        <div class="ms-search-wrap">
+          <input class="ms-search" type="text" placeholder="Search counties…" value="${escHtml(searchTerm)}" />
+        </div>
+        <div class="ms-options">
+          ${filtered.length === 0
+            ? '<div class="ms-empty">No matches</div>'
+            : filtered.map(o => `
+              <label class="ms-option ${current.includes(o) ? 'ms-selected' : ''}">
+                <input type="checkbox" ${current.includes(o) ? 'checked' : ''} data-opt="${escHtml(o)}" />
+                ${escHtml(o)}
+              </label>`).join('')}
+        </div>
+      </div>` : ''}
+    `;
+
+    // Control click — toggle open
+    wrap.querySelector('.ms-control').addEventListener('mousedown', e => {
+      if (e.target.classList.contains('ms-tag-remove') || e.target.closest('.ms-tag-remove')) return;
+      e.preventDefault();
+      open = !open;
+      searchTerm = '';
+      render();
+      if (open) setTimeout(() => wrap.querySelector('.ms-search')?.focus(), 0);
+    });
+
+    // Tag remove
+    wrap.querySelectorAll('.ms-tag-remove').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        current = current.filter(v => v !== btn.dataset.val);
+        render();
+      });
+    });
+
+    if (open) {
+      // Search input
+      const searchEl = wrap.querySelector('.ms-search');
+      searchEl.addEventListener('input', e => { searchTerm = e.target.value; render(); });
+      searchEl.addEventListener('mousedown', e => e.stopPropagation());
+      searchEl.addEventListener('keydown', e => { if (e.key === 'Escape') { open = false; render(); } });
+
+      // Checkboxes
+      wrap.querySelectorAll('.ms-option input').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const val = cb.dataset.opt;
+          if (cb.checked) { if (!current.includes(val)) current.push(val); }
+          else { current = current.filter(v => v !== val); }
+          // Re-render only the tags area & options to preserve scroll
+          wrap.querySelector('.ms-tags').innerHTML = current.length === 0
+            ? `<span class="ms-placeholder">${escHtml(placeholder)}</span>`
+            : current.map(v => `<span class="ms-tag">${escHtml(v)}<button class="ms-tag-remove" data-val="${escHtml(v)}">✕</button></span>`).join('');
+          wrap.querySelectorAll('.ms-option').forEach(opt => {
+            const v = opt.querySelector('input').dataset.opt;
+            opt.classList.toggle('ms-selected', current.includes(v));
+          });
+          // Re-bind tag removes
+          wrap.querySelectorAll('.ms-tag-remove').forEach(btn => {
+            btn.addEventListener('click', e => { e.stopPropagation(); current = current.filter(v => v !== btn.dataset.val); render(); });
+          });
+        });
+      });
+    }
+  }
+
+  render();
+
+  // Close on outside click
+  function onOutsideClick(e) {
+    if (!wrap.contains(e.target)) { open = false; render(); }
+  }
+  document.addEventListener('mousedown', onOutsideClick);
+  // Clean up listener when element is removed
+  const observer = new MutationObserver(() => {
+    if (!document.contains(wrap)) { document.removeEventListener('mousedown', onOutsideClick); observer.disconnect(); }
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
+
+  return { el: wrap, getSelected: () => current };
+}
+
 // ---- State ----
 let currentUser = null;
-let entries = JSON.parse(JSON.stringify(MOCK_ENTRIES)); // working copy
+let entries = JSON.parse(JSON.stringify(MOCK_ENTRIES));
+let users = JSON.parse(JSON.stringify(MOCK_USERS)); // working copy so profiles are editable
 let editingId = null;
 let filterState = { search: '', area: '', severity: '', status: '' };
 
 // ---- Auth ----
 function login(username, password) {
-  const user = MOCK_USERS.find(u => u.username === username && u.password === password);
+  const user = users.find(u => u.username === username && u.password === password);
   if (!user) return false;
   currentUser = user;
   return true;
@@ -20,16 +127,25 @@ function logout() {
 
 // ---- Permissions ----
 const can = {
-  view:   () => !!currentUser,
-  add:    () => currentUser && (currentUser.role === 'admin' || currentUser.role === 'moderator'),
-  edit:   () => currentUser && (currentUser.role === 'admin' || currentUser.role === 'moderator'),
-  delete: () => currentUser && currentUser.role === 'admin',
+  view:        () => !!currentUser,
+  add:         () => currentUser && (currentUser.role === 'admin' || currentUser.role === 'moderator'),
+  edit:        () => currentUser && (currentUser.role === 'admin' || currentUser.role === 'moderator'),
+  delete:      () => currentUser && currentUser.role === 'admin',
   manageUsers: () => currentUser && currentUser.role === 'admin',
 };
 
 // ---- Helpers ----
 function getUserById(id) {
-  return MOCK_USERS.find(u => u.id === id);
+  return users.find(u => u.id === id);
+}
+
+function discordDisplay(discord) {
+  if (!discord) return null;
+  return discord.username || null;
+}
+
+function hasContact(user) {
+  return !!(user.email || user.fetlife || (user.discord && user.discord.linked));
 }
 
 function severityLabel(s) {
@@ -50,13 +166,17 @@ function statusClass(s) {
 
 function formatDate(d) {
   if (!d) return '—';
-  const dt = new Date(d);
-  return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function escHtml(str) {
   if (!str) return '';
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function avatarInitials(user) {
+  const name = user.displayName || user.username;
+  return name.split(' ').map(w => w[0]).join('').slice(0,2).toUpperCase();
 }
 
 // ---- Filtering ----
@@ -65,10 +185,9 @@ function filteredEntries() {
   return entries.filter(e => {
     if (search) {
       const q = search.toLowerCase();
-      const inHandle = e.handle.toLowerCase().includes(q);
-      const inAliases = e.aliases.some(a => a.toLowerCase().includes(q));
-      const inDesc = e.description.toLowerCase().includes(q);
-      if (!inHandle && !inAliases && !inDesc) return false;
+      if (!e.handle.toLowerCase().includes(q) &&
+          !e.aliases.some(a => a.toLowerCase().includes(q)) &&
+          !e.description.toLowerCase().includes(q)) return false;
     }
     if (area && !e.areas.includes(area)) return false;
     if (severity && e.severity !== severity) return false;
@@ -130,10 +249,11 @@ function renderApp() {
           <span class="topbar-title">Names of Concern Database</span>
         </div>
         <div class="topbar-right">
-          <span class="topbar-user">
+          <button class="btn btn-ghost btn-sm topbar-profile-btn" id="myProfileBtn">
+            <span class="avatar-mini">${avatarInitials(currentUser)}</span>
             <span class="role-badge role-${currentUser.role}">${currentUser.role}</span>
-            ${escHtml(currentUser.username)}
-          </span>
+            ${escHtml(currentUser.displayName || currentUser.username)}
+          </button>
           <button class="btn btn-ghost btn-sm" id="logoutBtn">Sign out</button>
         </div>
       </header>
@@ -146,6 +266,7 @@ function renderApp() {
     </div>
   `;
   document.getElementById('logoutBtn').addEventListener('click', logout);
+  document.getElementById('myProfileBtn').addEventListener('click', () => renderProfileModal(currentUser.id, true));
   document.querySelectorAll('.nav-link').forEach(link => {
     link.addEventListener('click', e => {
       e.preventDefault();
@@ -177,7 +298,7 @@ function renderDatabase() {
         <input type="text" id="searchInput" placeholder="Search handle, alias, or description…" value="${escHtml(filterState.search)}" />
       </div>
       <select id="filterArea">
-        <option value="">All areas</option>
+        <option value="">All counties</option>
         ${AREAS.map(a => `<option value="${escHtml(a)}" ${filterState.area === a ? 'selected' : ''}>${escHtml(a)}</option>`).join('')}
       </select>
       <select id="filterSeverity">
@@ -203,28 +324,11 @@ function renderDatabase() {
       renderEntryModal();
     });
   }
-
-  document.getElementById('searchInput').addEventListener('input', e => {
-    filterState.search = e.target.value;
-    renderEntriesTable();
-  });
-  document.getElementById('filterArea').addEventListener('change', e => {
-    filterState.area = e.target.value;
-    renderEntriesTable();
-  });
-  document.getElementById('filterSeverity').addEventListener('change', e => {
-    filterState.severity = e.target.value;
-    renderEntriesTable();
-  });
-  document.getElementById('filterStatus').addEventListener('change', e => {
-    filterState.status = e.target.value;
-    renderEntriesTable();
-  });
-  document.getElementById('clearFiltersBtn').addEventListener('click', () => {
-    filterState = { search: '', area: '', severity: '', status: '' };
-    renderDatabase();
-  });
-
+  document.getElementById('searchInput').addEventListener('input', e => { filterState.search = e.target.value; renderEntriesTable(); });
+  document.getElementById('filterArea').addEventListener('change', e => { filterState.area = e.target.value; renderEntriesTable(); });
+  document.getElementById('filterSeverity').addEventListener('change', e => { filterState.severity = e.target.value; renderEntriesTable(); });
+  document.getElementById('filterStatus').addEventListener('change', e => { filterState.status = e.target.value; renderEntriesTable(); });
+  document.getElementById('clearFiltersBtn').addEventListener('click', () => { filterState = { search: '', area: '', severity: '', status: '' }; renderDatabase(); });
   renderEntriesTable();
 }
 
@@ -244,12 +348,12 @@ function renderEntriesTable() {
         <thead>
           <tr>
             <th>Handle / Aliases</th>
-            <th>Areas Active</th>
+            <th>Counties</th>
             <th>Severity</th>
             <th>Status</th>
             <th>Listed By</th>
             <th>Date Added</th>
-            ${can.edit() || can.delete() ? '<th class="col-actions">Actions</th>' : ''}
+            <th class="col-actions">Actions</th>
           </tr>
         </thead>
         <tbody>
@@ -259,18 +363,10 @@ function renderEntriesTable() {
     </div>
   `;
 
-  container.querySelectorAll('.view-btn').forEach(btn => {
-    btn.addEventListener('click', () => renderEntryDetail(btn.dataset.id));
-  });
-  container.querySelectorAll('.edit-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      editingId = btn.dataset.id;
-      renderEntryModal(editingId);
-    });
-  });
-  container.querySelectorAll('.delete-btn').forEach(btn => {
-    btn.addEventListener('click', () => confirmDelete(btn.dataset.id));
-  });
+  container.querySelectorAll('.view-btn').forEach(btn => btn.addEventListener('click', () => renderEntryDetail(btn.dataset.id)));
+  container.querySelectorAll('.edit-btn').forEach(btn => btn.addEventListener('click', () => { editingId = btn.dataset.id; renderEntryModal(editingId); }));
+  container.querySelectorAll('.delete-btn').forEach(btn => btn.addEventListener('click', () => confirmDelete(btn.dataset.id)));
+  container.querySelectorAll('.lister-link').forEach(btn => btn.addEventListener('click', () => renderProfileModal(btn.dataset.uid, false)));
 }
 
 function renderEntryRow(e) {
@@ -285,20 +381,21 @@ function renderEntryRow(e) {
       </td>
       <td>
         <div class="areas-cell">
-          ${e.areas.slice(0,3).map(a => `<span class="area-tag">${escHtml(a)}</span>`).join('')}
-          ${e.areas.length > 3 ? `<span class="area-tag area-more">+${e.areas.length - 3}</span>` : ''}
+          ${e.areas.slice(0,2).map(a => `<span class="area-tag">${escHtml(a)}</span>`).join('')}
+          ${e.areas.length > 2 ? `<span class="area-tag area-more">+${e.areas.length - 2} more</span>` : ''}
         </div>
       </td>
       <td><span class="sev-badge ${severityClass(e.severity)}">${severityLabel(e.severity)}</span></td>
       <td><span class="status-badge ${statusClass(e.status)}">${statusLabel(e.status)}</span></td>
-      <td><span class="lister-name">${lister ? escHtml(lister.username) : '—'}</span></td>
+      <td>
+        ${lister ? `<button class="btn-link lister-link" data-uid="${lister.id}">${escHtml(lister.displayName || lister.username)}</button>` : '—'}
+      </td>
       <td class="date-cell">${formatDate(e.dateAdded)}</td>
-      ${can.edit() || can.delete() ? `
       <td class="actions-cell">
         <button class="btn btn-ghost btn-xs view-btn" data-id="${e.id}">View</button>
         ${can.edit() ? `<button class="btn btn-ghost btn-xs edit-btn" data-id="${e.id}">Edit</button>` : ''}
         ${can.delete() ? `<button class="btn btn-danger btn-xs delete-btn" data-id="${e.id}">Del</button>` : ''}
-      </td>` : `<td class="actions-cell"><button class="btn btn-ghost btn-xs view-btn" data-id="${e.id}">View</button></td>`}
+      </td>
     </tr>
   `;
 }
@@ -330,7 +427,7 @@ function renderEntryDetail(id) {
           <span class="detail-value">${e.aliases.map(escHtml).join(', ')}</span>
         </div>` : ''}
         <div class="detail-row">
-          <span class="detail-label">Areas active</span>
+          <span class="detail-label">Counties</span>
           <div class="detail-value areas-cell">
             ${e.areas.map(a => `<span class="area-tag">${escHtml(a)}</span>`).join('')}
           </div>
@@ -349,19 +446,10 @@ function renderEntryDetail(id) {
         </div>
         ${lister ? `
         <div class="detail-section-title">Listed by</div>
-        <div class="lister-card">
-          <div class="lister-card-name">
-            <span class="role-badge role-${lister.role}">${lister.role}</span>
-            ${escHtml(lister.username)}
-          </div>
-          <div class="lister-contacts">
-            ${lister.email ? `<div class="contact-row">✉ <a href="mailto:${escHtml(lister.email)}">${escHtml(lister.email)}</a></div>` : ''}
-            ${lister.discord ? `<div class="contact-row">💬 ${escHtml(lister.discord)}</div>` : ''}
-            ${lister.fetlife ? `<div class="contact-row">🔗 <a href="${escHtml(lister.fetlife)}" target="_blank" rel="noopener">FetLife profile</a></div>` : ''}
-          </div>
-        </div>` : ''}
+        ${renderListerCard(lister)}` : ''}
       </div>
       <div class="modal-footer">
+        ${lister ? `<button class="btn btn-ghost" id="viewListerProfileBtn">View Profile</button>` : ''}
         ${can.edit() ? `<button class="btn btn-secondary" id="editFromDetailBtn">Edit Entry</button>` : ''}
         <button class="btn btn-ghost" data-close>Close</button>
       </div>
@@ -372,6 +460,300 @@ function renderEntryDetail(id) {
   modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
   const editBtn = modal.querySelector('#editFromDetailBtn');
   if (editBtn) editBtn.addEventListener('click', () => { modal.remove(); editingId = id; renderEntryModal(id); });
+  const profileBtn = modal.querySelector('#viewListerProfileBtn');
+  if (profileBtn) profileBtn.addEventListener('click', () => { modal.remove(); renderProfileModal(lister.id, false); });
+}
+
+function renderListerCard(user) {
+  const discord = user.discord && user.discord.linked ? user.discord.username : null;
+  return `
+    <div class="lister-card">
+      <div class="lister-card-top">
+        <div class="avatar">${avatarInitials(user)}</div>
+        <div>
+          <div class="lister-card-name">
+            <span class="role-badge role-${user.role}">${user.role}</span>
+            <strong>${escHtml(user.displayName || user.username)}</strong>
+          </div>
+          <div class="lister-card-username">@${escHtml(user.username)}</div>
+        </div>
+      </div>
+      <div class="lister-contacts">
+        ${user.email ? `<div class="contact-row"><span class="contact-icon">✉</span><a href="mailto:${escHtml(user.email)}">${escHtml(user.email)}</a></div>` : ''}
+        ${discord ? `<div class="contact-row"><span class="contact-icon discord-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.055a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
+        </span>${escHtml(discord)}</div>` : ''}
+        ${user.fetlife ? `<div class="contact-row"><span class="contact-icon">🔗</span><a href="${escHtml(user.fetlife)}" target="_blank" rel="noopener">FetLife profile</a></div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+// ---- Profile Modal ----
+function renderProfileModal(userId, editable) {
+  const user = getUserById(userId);
+  if (!user) return;
+  const isOwnProfile = currentUser && currentUser.id === userId;
+  const canEdit = editable && isOwnProfile;
+  const discord = user.discord && user.discord.linked ? user.discord : null;
+
+  const modal = document.createElement('div');
+  modal.className = 'modal-overlay';
+  modal.innerHTML = `
+    <div class="modal modal-profile">
+      <div class="modal-header">
+        <h3>${canEdit ? 'My Profile' : 'Member Profile'}</h3>
+        <button class="modal-close" data-close>✕</button>
+      </div>
+      <div class="modal-body" id="profileModalBody">
+        ${renderProfileView(user, canEdit)}
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => modal.remove()));
+  modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
+
+  bindProfileEvents(modal, user, canEdit);
+}
+
+function renderProfileView(user, canEdit) {
+  const discord = user.discord && user.discord.linked ? user.discord : null;
+  const entriesListed = entries.filter(e => e.listedBy === user.id).length;
+  return `
+    <div class="profile-header">
+      <div class="avatar avatar-lg">${avatarInitials(user)}</div>
+      <div class="profile-header-info">
+        <div class="profile-display-name">${escHtml(user.displayName || user.username)}</div>
+        <div class="profile-username">@${escHtml(user.username)}</div>
+        <div class="profile-meta">
+          <span class="role-badge role-${user.role}">${user.role}</span>
+          <span class="profile-joined">Member since ${formatDate(user.joinedDate)}</span>
+        </div>
+      </div>
+    </div>
+
+    ${user.bio ? `<p class="profile-bio">${escHtml(user.bio)}</p>` : ''}
+
+    <div class="profile-stats">
+      <div class="stat-box">
+        <span class="stat-num">${entriesListed}</span>
+        <span class="stat-label">entries listed</span>
+      </div>
+    </div>
+
+    <div class="detail-section-title">Contact</div>
+    ${!hasContact(user) ? `<div class="alert alert-error">No contact method set. Please add at least one.</div>` : ''}
+    <div class="contact-list">
+      ${user.email ? `
+        <div class="contact-item">
+          <span class="contact-type">Email</span>
+          <a href="mailto:${escHtml(user.email)}">${escHtml(user.email)}</a>
+        </div>` : ''}
+      ${discord ? `
+        <div class="contact-item">
+          <span class="contact-type">Discord</span>
+          <span class="discord-linked">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.055a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
+            ${escHtml(discord.username)}
+            <span class="linked-badge">linked</span>
+          </span>
+        </div>` : ''}
+      ${user.fetlife ? `
+        <div class="contact-item">
+          <span class="contact-type">FetLife</span>
+          <a href="${escHtml(user.fetlife)}" target="_blank" rel="noopener">${escHtml(user.fetlife.replace('https://fetlife.com/users/',''))}</a>
+        </div>` : ''}
+    </div>
+
+    ${canEdit ? `
+    <div class="modal-footer" style="padding:20px 0 0;border-top:1px solid var(--border);margin-top:20px">
+      <button class="btn btn-secondary" id="editProfileBtn">Edit Profile</button>
+      <button class="btn btn-ghost" data-close>Close</button>
+    </div>` : `
+    <div class="modal-footer" style="padding:20px 0 0;border-top:1px solid var(--border);margin-top:20px">
+      <button class="btn btn-ghost" data-close>Close</button>
+    </div>`}
+  `;
+}
+
+function renderProfileEditForm(user) {
+  const discord = user.discord && user.discord.linked ? user.discord : null;
+  return `
+    <div class="profile-header">
+      <div class="avatar avatar-lg">${avatarInitials(user)}</div>
+      <div class="profile-header-info">
+        <div class="profile-display-name">${escHtml(user.displayName || user.username)}</div>
+        <div class="profile-username">@${escHtml(user.username)}</div>
+        <div class="profile-meta"><span class="role-badge role-${user.role}">${user.role}</span></div>
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-top:16px">
+      <label>Display Name</label>
+      <input type="text" id="pfDisplayName" value="${escHtml(user.displayName || '')}" placeholder="How your name appears" />
+    </div>
+    <div class="form-group">
+      <label>Bio</label>
+      <textarea id="pfBio" rows="2" placeholder="A short bio (optional)">${escHtml(user.bio || '')}</textarea>
+    </div>
+
+    <div class="detail-section-title">Contact <span class="hint" style="text-transform:none;letter-spacing:0">(at least one required)</span></div>
+
+    <div class="form-group">
+      <label>Email address</label>
+      <input type="email" id="pfEmail" value="${escHtml(user.email || '')}" placeholder="your@email.com" />
+    </div>
+    <div class="form-group">
+      <label>FetLife URL</label>
+      <input type="url" id="pfFetlife" value="${escHtml(user.fetlife || '')}" placeholder="https://fetlife.com/users/YourHandle" />
+    </div>
+    <div class="form-group">
+      <label>Discord</label>
+      ${discord ? `
+        <div class="discord-linked-row">
+          <span class="discord-linked">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.055a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
+            ${escHtml(discord.username)} <span class="linked-badge">linked</span>
+          </span>
+          <button class="btn btn-ghost btn-sm" id="unlinkDiscordBtn">Unlink</button>
+        </div>` : `
+        <button class="btn btn-discord" id="linkDiscordBtn">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.055a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
+          Link Discord Account
+        </button>
+        <p class="field-hint">In the live app this opens Discord OAuth. Here it simulates the link.</p>`}
+    </div>
+
+    <div id="profileFormError" class="alert alert-error" style="display:none"></div>
+
+    <div class="modal-footer" style="padding:20px 0 0;border-top:1px solid var(--border);margin-top:4px">
+      <button class="btn btn-primary" id="saveProfileBtn">Save Changes</button>
+      <button class="btn btn-ghost" id="cancelEditProfileBtn">Cancel</button>
+    </div>
+  `;
+}
+
+function bindProfileEvents(modal, user, canEdit) {
+  const body = modal.querySelector('#profileModalBody');
+
+  function switchToEdit() {
+    body.innerHTML = renderProfileEditForm(user);
+    bindEditFormEvents();
+  }
+
+  function switchToView() {
+    body.innerHTML = renderProfileView(user, canEdit);
+    bindViewEvents();
+  }
+
+  function bindViewEvents() {
+    const editBtn = body.querySelector('#editProfileBtn');
+    if (editBtn) editBtn.addEventListener('click', switchToEdit);
+    modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => modal.remove()));
+  }
+
+  function bindEditFormEvents() {
+    // Discord link simulation
+    const linkBtn = body.querySelector('#linkDiscordBtn');
+    if (linkBtn) {
+      linkBtn.addEventListener('click', () => {
+        simulateDiscordOAuth(user, () => {
+          body.querySelector('#pfEmail') && (body.innerHTML = renderProfileEditForm(user));
+          bindEditFormEvents();
+        });
+      });
+    }
+
+    const unlinkBtn = body.querySelector('#unlinkDiscordBtn');
+    if (unlinkBtn) {
+      unlinkBtn.addEventListener('click', () => {
+        user.discord = null;
+        body.innerHTML = renderProfileEditForm(user);
+        bindEditFormEvents();
+      });
+    }
+
+    body.querySelector('#cancelEditProfileBtn').addEventListener('click', switchToView);
+
+    body.querySelector('#saveProfileBtn').addEventListener('click', () => {
+      const displayName = body.querySelector('#pfDisplayName').value.trim();
+      const bio = body.querySelector('#pfBio').value.trim();
+      const email = body.querySelector('#pfEmail').value.trim();
+      const fetlife = body.querySelector('#pfFetlife').value.trim();
+      const errEl = body.querySelector('#profileFormError');
+
+      const hasDiscord = user.discord && user.discord.linked;
+      if (!email && !fetlife && !hasDiscord) {
+        errEl.textContent = 'At least one contact method is required: email, FetLife, or Discord.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      // Persist changes into the working users array
+      const idx = users.findIndex(u => u.id === user.id);
+      users[idx] = { ...users[idx], displayName, bio, email: email || null, fetlife: fetlife || null };
+      // Update currentUser reference if editing own profile
+      if (currentUser && currentUser.id === user.id) {
+        currentUser = users[idx];
+        // Refresh topbar name
+        const profileBtn = document.querySelector('#myProfileBtn');
+        if (profileBtn) {
+          profileBtn.innerHTML = `
+            <span class="avatar-mini">${avatarInitials(currentUser)}</span>
+            <span class="role-badge role-${currentUser.role}">${currentUser.role}</span>
+            ${escHtml(currentUser.displayName || currentUser.username)}
+          `;
+        }
+      }
+      Object.assign(user, users[idx]);
+      switchToView();
+    });
+  }
+
+  bindViewEvents();
+}
+
+// ---- Discord OAuth simulation ----
+function simulateDiscordOAuth(user, onComplete) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.style.zIndex = '200';
+  overlay.innerHTML = `
+    <div class="modal modal-confirm">
+      <div class="modal-header">
+        <h3 style="display:flex;align-items:center;gap:8px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="#5865F2"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.033.055a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
+          Link Discord
+        </h3>
+        <button class="modal-close" data-close>✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom:12px">In the live app, this would open a Discord OAuth popup to authorise UKSA to read your username and ID.</p>
+        <p style="margin-bottom:16px;color:var(--text-muted);font-size:0.85rem">Enter a Discord username to simulate the link:</p>
+        <div class="form-group" style="margin:0">
+          <input type="text" id="discordSimInput" placeholder="e.g. YourName" value="${escHtml(user.username)}" />
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-discord" id="confirmDiscordLink">Authorise (simulate)</button>
+        <button class="btn btn-ghost" data-close>Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => overlay.remove()));
+  overlay.addEventListener('click', ev => { if (ev.target === overlay) overlay.remove(); });
+  overlay.querySelector('#confirmDiscordLink').addEventListener('click', () => {
+    const username = overlay.querySelector('#discordSimInput').value.trim();
+    if (!username) return;
+    const fakeId = String(Math.floor(Math.random() * 9e17) + 1e17);
+    user.discord = { username, id: fakeId, linked: true };
+    const idx = users.findIndex(u => u.id === user.id);
+    if (idx !== -1) users[idx].discord = user.discord;
+    overlay.remove();
+    onComplete();
+  });
 }
 
 // ---- Entry Add/Edit Modal ----
@@ -398,15 +780,8 @@ function renderEntryModal(id = null) {
             <input type="text" id="fAliases" value="${existing ? escHtml(existing.aliases.join(', ')) : ''}" placeholder="e.g. AltHandle, OldName" />
           </div>
           <div class="form-group">
-            <label>Areas Active <span class="required">*</span></label>
-            <div class="checkbox-grid" id="fAreas">
-              ${AREAS.map(a => `
-                <label class="checkbox-label">
-                  <input type="checkbox" value="${escHtml(a)}" ${existing && existing.areas.includes(a) ? 'checked' : ''} />
-                  ${escHtml(a)}
-                </label>
-              `).join('')}
-            </div>
+            <label>Counties Active <span class="required">*</span></label>
+            <div id="fAreasMount"></div>
           </div>
           <div class="form-group">
             <label>Description <span class="required">*</span></label>
@@ -445,18 +820,22 @@ function renderEntryModal(id = null) {
   modal.querySelectorAll('[data-close]').forEach(el => el.addEventListener('click', () => modal.remove()));
   modal.addEventListener('click', ev => { if (ev.target === modal) modal.remove(); });
 
+  // Mount multiselect into the placeholder
+  const ms = createMultiselect(AREAS, existing ? existing.areas : [], 'Select counties…');
+  document.getElementById('fAreasMount').appendChild(ms.el);
+
   document.getElementById('saveEntryBtn').addEventListener('click', () => {
     const handle = document.getElementById('fHandle').value.trim();
     const aliasRaw = document.getElementById('fAliases').value.trim();
     const aliases = aliasRaw ? aliasRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
-    const areas = [...document.querySelectorAll('#fAreas input:checked')].map(el => el.value);
+    const areas = ms.getSelected();
     const description = document.getElementById('fDesc').value.trim();
     const severity = document.getElementById('fSeverity').value;
     const status = document.getElementById('fStatus').value;
     const errEl = document.getElementById('formError');
 
     if (!handle || !description || !severity || !status || areas.length === 0) {
-      errEl.textContent = 'Please fill in all required fields and select at least one area.';
+      errEl.textContent = 'Please fill in all required fields and select at least one county.';
       errEl.style.display = 'block';
       return;
     }
@@ -466,8 +845,7 @@ function renderEntryModal(id = null) {
       const idx = entries.findIndex(e => e.id === id);
       entries[idx] = { ...entries[idx], handle, aliases, areas, description, severity, status, dateUpdated: now };
     } else {
-      const newId = 'e' + (Date.now());
-      entries.unshift({ id: newId, handle, aliases, areas, description, severity, status, listedBy: currentUser.id, dateAdded: now, dateUpdated: now });
+      entries.unshift({ id: 'e' + Date.now(), handle, aliases, areas, description, severity, status, listedBy: currentUser.id, dateAdded: now, dateUpdated: now });
     }
     modal.remove();
     renderDatabase();
@@ -513,35 +891,50 @@ function renderUsers() {
     <div class="view-header">
       <div>
         <h2>User Management</h2>
-        <p class="view-sub">${MOCK_USERS.length} accounts</p>
+        <p class="view-sub">${users.length} accounts</p>
       </div>
     </div>
     <div class="entry-table-wrap">
       <table class="entry-table">
         <thead>
           <tr>
-            <th>Username</th>
+            <th>User</th>
             <th>Role</th>
             <th>Email</th>
             <th>Discord</th>
             <th>FetLife</th>
+            <th class="col-actions">Profile</th>
           </tr>
         </thead>
         <tbody>
-          ${MOCK_USERS.map(u => `
+          ${users.map(u => {
+            const discord = u.discord && u.discord.linked ? u.discord.username : null;
+            return `
             <tr>
-              <td><strong>${escHtml(u.username)}</strong></td>
+              <td>
+                <div style="display:flex;align-items:center;gap:8px">
+                  <div class="avatar avatar-sm">${avatarInitials(u)}</div>
+                  <div>
+                    <div style="font-weight:600">${escHtml(u.displayName || u.username)}</div>
+                    <div style="font-size:0.75rem;color:var(--text-muted)">@${escHtml(u.username)}</div>
+                  </div>
+                </div>
+              </td>
               <td><span class="role-badge role-${u.role}">${u.role}</span></td>
-              <td>${u.email ? `<a href="mailto:${escHtml(u.email)}">${escHtml(u.email)}</a>` : '—'}</td>
-              <td>${u.discord ? escHtml(u.discord) : '—'}</td>
-              <td>${u.fetlife ? `<a href="${escHtml(u.fetlife)}" target="_blank" rel="noopener">View profile</a>` : '—'}</td>
-            </tr>
-          `).join('')}
+              <td>${u.email ? `<a href="mailto:${escHtml(u.email)}">${escHtml(u.email)}</a>` : '<span style="color:var(--text-dim)">—</span>'}</td>
+              <td>${discord ? `<span style="font-size:0.85rem">${escHtml(discord)}</span>` : '<span style="color:var(--text-dim)">—</span>'}</td>
+              <td>${u.fetlife ? `<a href="${escHtml(u.fetlife)}" target="_blank" rel="noopener">View</a>` : '<span style="color:var(--text-dim)">—</span>'}</td>
+              <td class="actions-cell"><button class="btn btn-ghost btn-xs view-user-btn" data-uid="${u.id}">View</button></td>
+            </tr>`;
+          }).join('')}
         </tbody>
       </table>
     </div>
-    <p class="demo-note">⚠ User management (add/edit/remove accounts) will be implemented with Firebase Auth in the live version.</p>
+    <p class="demo-note">⚠ Add/remove accounts will be managed through Firebase Auth in the live version.</p>
   `;
+  mc.querySelectorAll('.view-user-btn').forEach(btn => {
+    btn.addEventListener('click', () => renderProfileModal(btn.dataset.uid, false));
+  });
 }
 
 // ---- Render: About View ----
@@ -563,20 +956,12 @@ function renderAbout() {
         </div>
       </div>
       <div class="about-card">
-        <h4>Data Fields</h4>
-        <ul>
-          <li><strong>Handle / Username</strong> — Primary online identity used by the person of concern</li>
-          <li><strong>Known Aliases</strong> — Any other names or handles they are known by</li>
-          <li><strong>Areas Active</strong> — Platforms and events where they are known to be active</li>
-          <li><strong>Description</strong> — Nature of the concern</li>
-          <li><strong>Severity</strong> — High / Medium / Low risk assessment</li>
-          <li><strong>Status</strong> — Active / Under Review / Resolved</li>
-          <li><strong>Listed By</strong> — UKSA member who added the entry, with contact details</li>
-        </ul>
+        <h4>Profile Requirements</h4>
+        <p>Every member must have at least one contact method on their profile: email address, FetLife URL, or a linked Discord account. This ensures accountability for listed entries.</p>
       </div>
       <div class="about-card about-note">
         <h4>⚠ This is a local mockup</h4>
-        <p>No real data is stored. All entries and accounts are fictional. The live version will use Firebase for authentication and data storage, deployed via Netlify.</p>
+        <p>No real data is stored. All entries and accounts are fictional. The live version will use Firebase for authentication (including Discord OAuth) and Firestore for data storage, deployed via Netlify.</p>
       </div>
     </div>
   `;
